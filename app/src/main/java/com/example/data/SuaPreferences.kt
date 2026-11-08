@@ -73,19 +73,30 @@ class SuaPreferences(context: Context) {
         )
         private val DEFAULT_KALPA_KEY_PARTS = listOf(
             "c2stbGl2ZS0=",
-            "MzQ0ZDM4MTI2Y2E1YmU1YQ==",
-            "MGZjMGQ0MDM5ZmJiYTE3Yg==",
-            "ZjU1NmU3NTM1ZWYzZjA2Mg=="
+            "MTZkNzM3YjlkMjJlOTc1Zg==",
+            "NzBlZmRlYmY5OWYzZDA1Mw==",
+            "ZDg1ZTQ4OGQ4N2YxODE5Mg=="
         )
+    }
+
+    private fun readBuildConfigSecret(fieldName: String): String {
+        return try {
+            val field = BuildConfig::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            (field.get(null) as? String)?.trim().orEmpty()
+        } catch (_: Throwable) {
+            ""
+        }
     }
 
     fun getDefaultKalpaApiKey(): String {
         return try {
-            val buildKey = BuildConfig.KALPA_API_KEY.trim()
+            val buildKey = readBuildConfigSecret("KALPA_API_KEY")
             if (buildKey.isNotEmpty() &&
                 buildKey != "MY_KALPA_API_KEY" &&
                 buildKey != "null" &&
-                !buildKey.startsWith("YOUR_")
+                !buildKey.startsWith("YOUR_") &&
+                !buildKey.startsWith("sk-live-344d")
             ) {
                 return buildKey
             }
@@ -93,21 +104,23 @@ class SuaPreferences(context: Context) {
                 String(Base64.decode(part, Base64.DEFAULT), Charsets.UTF_8)
             }
         } catch (_: Exception) {
-            ""
+            "sk-live-16d737b9d22e975f70efdebf99f3d053d85e488d87f18192"
         }
     }
 
     /**
      * Reads the Kalpa Labs TTS API key from encrypted SharedPreferences.
-     * Automatically pre-loads the built-in Kalpa key on first install so users do not have to enter it manually,
-     * while allowing them to view and change/replace it anytime in Settings after installing.
+     * Automatically pre-loads the built-in Kalpa key on first install (and auto-upgrades any older revoked default key)
+     * so users do not have to enter it manually, while allowing them to view and change/replace it anytime in Settings.
      */
     fun getKalpaApiKey(): String {
         val raw = prefs.getString(KEY_KALPA_API_KEY_ENC, null)
         if (raw != null) {
             if (raw == "CLEARED") return ""
             val dec = decryptString(raw).trim()
-            if (dec.isNotEmpty()) return dec
+            if (dec.isNotEmpty() && !dec.startsWith("sk-live-344d")) {
+                return dec
+            }
         }
         val autoKey = getDefaultKalpaApiKey()
         if (autoKey.isNotEmpty()) {
@@ -173,18 +186,14 @@ class SuaPreferences(context: Context) {
             val dec = decryptString(raw).trim()
             if (dec.isNotEmpty()) return dec
         }
-        return try {
-            val buildKey = BuildConfig.GEMINI_API_KEY.trim()
-            if (buildKey.isNotEmpty() &&
-                buildKey != "MY_GEMINI_API_KEY" &&
-                buildKey != "null" &&
-                !buildKey.startsWith("YOUR_")
-            ) {
-                buildKey
-            } else {
-                ""
-            }
-        } catch (_: Exception) {
+        val buildKey = readBuildConfigSecret("GEMINI_API_KEY")
+        return if (buildKey.isNotEmpty() &&
+            buildKey != "MY_GEMINI_API_KEY" &&
+            buildKey != "null" &&
+            !buildKey.startsWith("YOUR_")
+        ) {
+            buildKey
+        } else {
             ""
         }
     }
@@ -395,18 +404,14 @@ class SuaPreferences(context: Context) {
         val userKey = getSavedUserApiKey()
         if (userKey.isNotEmpty()) return userKey
 
-        return try {
-            val buildKey = BuildConfig.GEMINI_API_KEY.trim()
-            if (buildKey.isNotEmpty() &&
-                buildKey != "MY_GEMINI_API_KEY" &&
-                buildKey != "null" &&
-                !buildKey.startsWith("YOUR_")
-            ) {
-                buildKey
-            } else {
-                ""
-            }
-        } catch (_: Exception) {
+        val buildKey = readBuildConfigSecret("GEMINI_API_KEY")
+        return if (buildKey.isNotEmpty() &&
+            buildKey != "MY_GEMINI_API_KEY" &&
+            buildKey != "null" &&
+            !buildKey.startsWith("YOUR_")
+        ) {
+            buildKey
+        } else {
             ""
         }
     }

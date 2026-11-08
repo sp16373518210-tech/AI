@@ -45,14 +45,16 @@ class MokoAssistantTest {
     @Test
     fun kalpaKey_isAutoLoadedOnInstall_andCanBeChangedOrRestoredEncrypted() {
         // 1. On fresh install (when preference is not set), getKalpaApiKey() automatically pre-loads the built-in key
+        val expectedDefaultKey = "sk-live-16d737b9d22e975f70efdebf99f3d053d85e488d87f18192"
         val restoredDefault = prefs.restoreDefaultKalpaApiKey()
-        assertTrue(
-            "Built-in Kalpa API key must be automatically available on install without manual entry",
-            restoredDefault.isNotEmpty()
-        )
-        assertEquals(restoredDefault, prefs.getKalpaApiKey())
+        assertEquals(expectedDefaultKey, restoredDefault)
+        assertEquals(expectedDefaultKey, prefs.getKalpaApiKey())
 
-        // 2. After installing, the user can change/update the key anytime and it is stored encrypted
+        // 2. If an older revoked key (sk-live-344d...) was previously stored, getKalpaApiKey() auto-upgrades it
+        prefs.saveKalpaApiKey("sk-live-344d38126ca5be5a0fc0d4039fbba17bf556e7535ef3f062")
+        assertEquals(expectedDefaultKey, prefs.getKalpaApiKey())
+
+        // 3. After installing, the user can change/update the key anytime and it is stored encrypted
         prefs.saveKalpaApiKey("sk-test-custom-user-key")
         assertEquals("sk-test-custom-user-key", prefs.getKalpaApiKey())
 
@@ -61,9 +63,9 @@ class MokoAssistantTest {
         val rawStored = rawPrefs.getString("kalpa_voice_api_key_enc_v2", "") ?: ""
         assertFalse("Encrypted preference must not equal plain-text key", rawStored.contains("sk-test-custom-user-key"))
 
-        // 3. User can also restore the built-in default Kalpa key anytime
+        // 4. User can also restore the built-in default Kalpa key anytime
         prefs.restoreDefaultKalpaApiKey()
-        assertEquals(restoredDefault, prefs.getKalpaApiKey())
+        assertEquals(expectedDefaultKey, prefs.getKalpaApiKey())
     }
 
     @Test

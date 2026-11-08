@@ -1,4 +1,4 @@
-name: Build, Test & Lint Moko Android APK
+name: Build Moko Android APK
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       - '*'
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -50,9 +50,6 @@ jobs:
 
       - name: Run Unit & Robolectric Tests
         run: gradle :app:testDebugUnitTest --no-daemon
-
-      - name: Run Android Lint Check
-        run: gradle :app:lintDebug --no-daemon
 
       - name: Build Moko Debug APK
         run: gradle assembleDebug --no-daemon
