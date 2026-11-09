@@ -314,8 +314,7 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
         prefs.setKalpaVoiceId(SuaPreferences.DEFAULT_KALPA_VOICE_ID)
         _kalpaApiKey.value = restored
         _kalpaVoiceId.value = prefs.getKalpaVoiceId()
-        _settingsBannerMessage.value = "DEFAULT KALPA VOICE RESTORED // Automatic built-in Kalpa API Key & Kiara Voice active."
-        SuaVoiceSpeaker.speak("जी ${_userName.value}, कल्पा लैब्स की डिफ़ॉल्ट ऑटोमैटिक एपीआई की और कियारा आवाज़ फिर से सेट हो गई है।")
+        _settingsBannerMessage.value = "KALPA VOICE RESET // Custom key cleared & Kiara Voice selected."
     }
 
     fun selectKalpaVoice(voiceId: String) {

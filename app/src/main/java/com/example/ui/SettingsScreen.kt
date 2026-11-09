@@ -400,7 +400,7 @@ fun SettingsScreen(
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
                                         Text(
-                                            text = if (hasKalpaKey) "AUTO-ACTIVE" else "FALLBACK TTS",
+                                            text = if (hasKalpaKey) "KEY CONFIGURED" else "ANDROID TTS",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = if (hasKalpaKey) SuaEmerald else SuaAmber,
                                             fontWeight = FontWeight.Bold
@@ -409,10 +409,9 @@ fun SettingsScreen(
                                 }
 
                                 Text(
-                                    text = "Pre-loaded automatically on install — works out of the box! You can also edit or change the key anytime below:",
+                                    text = "Enter your Kalpa Labs API Key below (or configure KALPA_API_KEY in AI Studio Secrets) for neural voice, or leave blank to use offline Android TTS:",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = SuaEmerald,
-                                    fontWeight = FontWeight.SemiBold
+                                    color = SuaTextSecondary
                                 )
 
                                 Text(
@@ -452,8 +451,8 @@ fun SettingsScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("kalpa_api_key_input"),
-                                    label = { Text("Kalpa Labs API Key (Auto-Loaded & Editable)") },
-                                    placeholder = { Text("Enter or edit Kalpa Labs API key") },
+                                    label = { Text("Kalpa Labs API Key (Stored Encrypted)") },
+                                    placeholder = { Text("Paste your Kalpa Labs API key") },
                                     singleLine = true,
                                     visualTransformation = if (showKalpaKeyPlain) {
                                         VisualTransformation.None
@@ -512,7 +511,7 @@ fun SettingsScreen(
                                     ) {
                                         Icon(Icons.Default.Save, contentDescription = null)
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("SAVE / CHANGE KEY", fontWeight = FontWeight.ExtraBold)
+                                        Text("SAVE KEY", fontWeight = FontWeight.ExtraBold)
                                     }
 
                                     Button(
@@ -543,12 +542,12 @@ fun SettingsScreen(
                                         .height(44.dp)
                                         .testTag("restore_default_kalpa_key_button"),
                                     shape = RoundedCornerShape(12.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, SuaEmerald)
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, SuaAmber)
                                 ) {
                                     Text(
-                                        text = "RESTORE BUILT-IN AUTO KALPA KEY & VOICE",
+                                        text = "CLEAR CUSTOM KALPA KEY & RESET VOICE",
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = SuaEmerald,
+                                        color = SuaAmber,
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                 }

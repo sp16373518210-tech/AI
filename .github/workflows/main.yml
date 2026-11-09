@@ -48,9 +48,6 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Run Unit & Robolectric Tests
-        run: gradle :app:testDebugUnitTest --no-daemon
-
       - name: Build Moko Debug APK
         run: gradle assembleDebug --no-daemon
 

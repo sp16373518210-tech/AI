@@ -20,8 +20,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class MokoAssistantTest {
 
     private lateinit var context: Context
@@ -35,6 +37,7 @@ class MokoAssistantTest {
         prefs = SuaPreferences(context)
         prefs.setVoicePrivacyConsentAccepted(false)
         prefs.deleteUserApiKey()
+        prefs.setCustomApiUrl("")
         prefs.saveKalpaApiKey("")
         SuaStateRepository.setOperatingMode(MokoOperatingMode.OFFLINE)
         SuaStateRepository.updateServiceError(null)
@@ -43,29 +46,25 @@ class MokoAssistantTest {
     }
 
     @Test
-    fun kalpaKey_isAutoLoadedOnInstall_andCanBeChangedOrRestoredEncrypted() {
-        // 1. On fresh install (when preference is not set), getKalpaApiKey() automatically pre-loads the built-in key
-        val expectedDefaultKey = "sk-live-16d737b9d22e975f70efdebf99f3d053d85e488d87f18192"
-        val restoredDefault = prefs.restoreDefaultKalpaApiKey()
-        assertEquals(expectedDefaultKey, restoredDefault)
-        assertEquals(expectedDefaultKey, prefs.getKalpaApiKey())
+    fun kalpaKey_defaultsToEmpty_andCanBeSavedOrClearedEncrypted() {
+        // 1. Default key is empty when not provided in .env or Settings (never hardcoded in source)
+        val defaultKey = prefs.restoreDefaultKalpaApiKey()
+        assertEquals("", defaultKey)
+        assertEquals("", prefs.getKalpaApiKey())
 
-        // 2. If an older revoked key (sk-live-344d...) was previously stored, getKalpaApiKey() auto-upgrades it
-        prefs.saveKalpaApiKey("sk-live-344d38126ca5be5a0fc0d4039fbba17bf556e7535ef3f062")
-        assertEquals(expectedDefaultKey, prefs.getKalpaApiKey())
+        // 2. When a user saves their own key in Settings, it is stored encrypted with AES-GCM
+        val sampleUserKey = "user-configured-test-key-placeholder"
+        prefs.saveKalpaApiKey(sampleUserKey)
+        assertEquals(sampleUserKey, prefs.getKalpaApiKey())
 
-        // 3. After installing, the user can change/update the key anytime and it is stored encrypted
-        prefs.saveKalpaApiKey("sk-test-custom-user-key")
-        assertEquals("sk-test-custom-user-key", prefs.getKalpaApiKey())
-
-        // Verify the raw SharedPreferences encrypts the key (never plain-text)
         val rawPrefs = context.getSharedPreferences("sua_assistant_prefs", Context.MODE_PRIVATE)
         val rawStored = rawPrefs.getString("kalpa_voice_api_key_enc_v2", "") ?: ""
-        assertFalse("Encrypted preference must not equal plain-text key", rawStored.contains("sk-test-custom-user-key"))
+        assertTrue("Stored key must use AES-GCM encryption format", rawStored.startsWith("GCM:"))
+        assertFalse("Encrypted preference must never contain plain-text key", rawStored.contains(sampleUserKey))
 
-        // 4. User can also restore the built-in default Kalpa key anytime
-        prefs.restoreDefaultKalpaApiKey()
-        assertEquals(expectedDefaultKey, prefs.getKalpaApiKey())
+        // 3. Clearing or resetting the key removes it cleanly
+        prefs.saveKalpaApiKey("")
+        assertEquals("", prefs.getKalpaApiKey())
     }
 
     @Test
@@ -167,7 +166,7 @@ class MokoAssistantTest {
 
     @Test
     fun selfEchoAndBargeInDetection_filtersSpeakerEcho_andAllowsUserCorrection() {
-        SuaVoiceSpeaker.speak("जी बॉस, मोको ऑनलाइन हो गई हूँ।")
+        SuaVoiceSpeaker.recordSpokenForEchoDetection("जी बॉस, मोको ऑनलाइन हो गई हूँ।")
         assertTrue(
             "Assistant signature phrase must be detected as self-echo",
             SuaVoiceSpeaker.isLikelySelfEcho("जी बॉस मोको ऑनलाइन हो गई हूँ")

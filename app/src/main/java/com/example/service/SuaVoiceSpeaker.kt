@@ -238,6 +238,18 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
         }
     }
 
+    fun recordSpokenForEchoDetection(textToSpeak: String) {
+        val cleanText = textToSpeak.trim()
+        if (cleanText.isEmpty()) return
+        lastSpokenText = cleanText
+        synchronized(recentSpokenHistory) {
+            if (recentSpokenHistory.size >= 6) {
+                recentSpokenHistory.removeFirst()
+            }
+            recentSpokenHistory.addLast(cleanText)
+        }
+    }
+
     /**
      * Speaks text using Kalpa Labs Neural Voice API (`https://api.kalpalabs.ai/v1/tts/{voice_id}`)
      * with the user's Kalpa API key, and falls back to local TTS only if offline.
@@ -249,13 +261,7 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
             return
         }
 
-        lastSpokenText = cleanText
-        synchronized(recentSpokenHistory) {
-            if (recentSpokenHistory.size >= 6) {
-                recentSpokenHistory.removeFirst()
-            }
-            recentSpokenHistory.addLast(cleanText)
-        }
+        recordSpokenForEchoDetection(cleanText)
         val ctx = appContext
         if (ctx == null) {
             onComplete?.invoke()

@@ -71,12 +71,6 @@ class SuaPreferences(context: Context) {
             "gpt-4o-mini",
             "claude-3-5-haiku-latest"
         )
-        private val DEFAULT_KALPA_KEY_PARTS = listOf(
-            "c2stbGl2ZS0=",
-            "MTZkNzM3YjlkMjJlOTc1Zg==",
-            "NzBlZmRlYmY5OWYzZDA1Mw==",
-            "ZDg1ZTQ4OGQ4N2YxODE5Mg=="
-        )
     }
 
     private fun readBuildConfigSecret(fieldName: String): String {
@@ -90,43 +84,33 @@ class SuaPreferences(context: Context) {
     }
 
     fun getDefaultKalpaApiKey(): String {
-        return try {
-            val buildKey = readBuildConfigSecret("KALPA_API_KEY")
-            if (buildKey.isNotEmpty() &&
-                buildKey != "MY_KALPA_API_KEY" &&
-                buildKey != "null" &&
-                !buildKey.startsWith("YOUR_") &&
-                !buildKey.startsWith("sk-live-344d")
-            ) {
-                return buildKey
-            }
-            DEFAULT_KALPA_KEY_PARTS.joinToString("") { part ->
-                String(Base64.decode(part, Base64.DEFAULT), Charsets.UTF_8)
-            }
-        } catch (_: Exception) {
-            "sk-live-16d737b9d22e975f70efdebf99f3d053d85e488d87f18192"
+        val buildKey = readBuildConfigSecret("KALPA_API_KEY")
+        return if (buildKey.isNotEmpty() &&
+            buildKey != "MY_KALPA_API_KEY" &&
+            buildKey != "null" &&
+            !buildKey.startsWith("YOUR_")
+        ) {
+            buildKey
+        } else {
+            ""
         }
     }
 
     /**
      * Reads the Kalpa Labs TTS API key from encrypted SharedPreferences.
-     * Automatically pre-loads the built-in Kalpa key on first install (and auto-upgrades any older revoked default key)
-     * so users do not have to enter it manually, while allowing them to view and change/replace it anytime in Settings.
+     * Defaults to empty (or build-time .env secret if configured in AI Studio Secrets / CI)
+     * and never embeds any hardcoded key in source code.
      */
     fun getKalpaApiKey(): String {
         val raw = prefs.getString(KEY_KALPA_API_KEY_ENC, null)
         if (raw != null) {
             if (raw == "CLEARED") return ""
             val dec = decryptString(raw).trim()
-            if (dec.isNotEmpty() && !dec.startsWith("sk-live-344d")) {
+            if (dec.isNotEmpty()) {
                 return dec
             }
         }
-        val autoKey = getDefaultKalpaApiKey()
-        if (autoKey.isNotEmpty()) {
-            prefs.edit().putString(KEY_KALPA_API_KEY_ENC, encryptString(autoKey)).apply()
-        }
-        return autoKey
+        return getDefaultKalpaApiKey()
     }
 
     fun saveKalpaApiKey(apiKey: String) {
@@ -140,11 +124,8 @@ class SuaPreferences(context: Context) {
     }
 
     fun restoreDefaultKalpaApiKey(): String {
-        val defaultKey = getDefaultKalpaApiKey()
-        if (defaultKey.isNotEmpty()) {
-            prefs.edit().putString(KEY_KALPA_API_KEY_ENC, encryptString(defaultKey)).apply()
-        }
-        return defaultKey
+        prefs.edit().remove(KEY_KALPA_API_KEY_ENC).apply()
+        return getDefaultKalpaApiKey()
     }
 
     fun getKalpaVoiceId(): String {
@@ -157,9 +138,7 @@ class SuaPreferences(context: Context) {
     }
 
     fun hasAcceptedVoicePrivacyConsent(): Boolean {
-        // Default to true on install so voice mode works out-of-the-box without blocking manual setup;
-        // user can toggle or revoke it anytime in Settings after install.
-        return prefs.getBoolean(KEY_VOICE_PRIVACY_CONSENT, true)
+        return prefs.getBoolean(KEY_VOICE_PRIVACY_CONSENT, false)
     }
 
     fun setVoicePrivacyConsentAccepted(accepted: Boolean) {
