@@ -62,6 +62,12 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
 
     private val recentSpokenHistory = ArrayDeque<String>(6)
 
+    private val speechSafetyTimeoutRunnable = Runnable {
+        if (isSpeakingNow) {
+            onSpeechFinishedInternal()
+        }
+    }
+
     private val selfEchoPhrases = listOf(
         "माफ़ कीजिए",
         "maph kijie",
@@ -84,10 +90,15 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
         "ऑनलाइन हो गई हूँ",
         "लगातार बात कर सकते हैं",
         "स्टैंडबाय में चला जाएगा",
-        "मैं आपकी प्यारी"
+        "मैं आपकी प्यारी",
+        "हो गया है",
+        "हो रहा है",
+        "बोलिए क्या काम करना है",
+        "रही हूँ",
+        "रहा हूँ"
     )
 
-    fun isInPostSpeechCooldown(cooldownMs: Long = 1400L): Boolean {
+    fun isInPostSpeechCooldown(cooldownMs: Long = 1800L): Boolean {
         if (isSpeakingNow) return true
         val elapsed = System.currentTimeMillis() - lastSpeechEndTimeMs
         return lastSpeechEndTimeMs > 0L && elapsed in 0..cooldownMs
@@ -111,6 +122,11 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
         val clean = recognizedText.trim().lowercase()
         if (clean.isEmpty()) return false
 
+        // 0. Check assistant status/confirmation phrases ("हो गया", "हो रहा है", "कर दिया गया है", etc.)
+        if (com.example.util.HindiTransliterator.isAssistantSelfStatusPhrase(clean)) {
+            return true
+        }
+
         // 1. If the user starts with a natural barge-in / correction phrase ("नहीं नहीं...", "अरे...", "साउंड कम करो", "स्टॉप"),
         // it is NEVER self-echo — let the user interrupt Moko immediately!
         if (com.example.util.HindiTransliterator.isUserBargeInPhrase(clean)) {
@@ -130,7 +146,7 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
 
         for (spoken in candidates) {
             val spokenLower = spoken.trim().lowercase()
-            if (spokenLower.length >= 5 && (spokenLower.contains(clean) || clean.contains(spokenLower))) {
+            if (spokenLower.length >= 4 && (spokenLower.contains(clean) || clean.contains(spokenLower))) {
                 return true
             }
             val spokenTokens = extractComparableTokens(spokenLower)
@@ -143,15 +159,15 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
                     }
                 }
                 val overlapRatio = matchedCount.toFloat() / recTokens.size.toFloat()
-                // If >= 45% of spoken words match what Moko just said (or >= 2 words while actively speaking), it's speaker echo!
-                if (overlapRatio >= 0.45f || (isInPostSpeechCooldown(2400L) && matchedCount >= 2)) {
+                // If >= 35% of spoken words match what Moko just said (or >= 1 word while actively speaking/cooldown), it's speaker echo!
+                if (overlapRatio >= 0.35f || (isInPostSpeechCooldown(2400L) && matchedCount >= 1)) {
                     return true
                 }
             }
         }
 
-        // 4. While speaker is actively playing, ignore very short 1-word ambient noise that isn't a barge-in command
-        if (isSpeakingNow && recTokens.size <= 1) {
+        // 4. While speaker is actively playing, ignore ambient noise that isn't a clear user barge-in command
+        if (isSpeakingNow && recTokens.size <= 2) {
             return true
         }
 
@@ -196,8 +212,16 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
                     onSpeechFinishedInternal()
                 }
 
+                override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                    onSpeechFinishedInternal()
+                }
+
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
+                    onSpeechFinishedInternal()
+                }
+
+                override fun onError(utteranceId: String?, errorCode: Int) {
                     onSpeechFinishedInternal()
                 }
             })
@@ -207,6 +231,7 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
     }
 
     private fun onSpeechFinishedInternal() {
+        mainHandler.removeCallbacks(speechSafetyTimeoutRunnable)
         isSpeakingNow = false
         lastSpeechEndTimeMs = System.currentTimeMillis()
         mainHandler.postDelayed({
@@ -224,7 +249,7 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
                     }
                 )
             }
-        }, 900L)
+        }, 300L)
     }
 
     fun applyLocale(localeTag: String) {
@@ -272,6 +297,8 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
         isSpeakingNow = true
         currentOnComplete = onComplete
         SuaStateRepository.updateStatus(SuaStatus.SPEAKING)
+        mainHandler.removeCallbacks(speechSafetyTimeoutRunnable)
+        mainHandler.postDelayed(speechSafetyTimeoutRunnable, 11_000L)
 
         val prefs = SuaPreferences(ctx)
         val kalpaKey = prefs.getKalpaApiKey()

@@ -170,6 +170,7 @@ fun SuaDashboardScreen(
 
     var commandInput by remember { mutableStateOf("") }
     var pendingRequestedMode by remember { mutableStateOf(MokoOperatingMode.ONLINE) }
+    var pendingWakePrefix by remember { mutableStateOf<String?>(null) }
     var showPrivacyConsentDialog by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -198,22 +199,29 @@ fun SuaDashboardScreen(
             if (!privacyConsentAccepted) {
                 viewModel.setVoicePrivacyConsent(true)
             }
-            if (pendingRequestedMode == MokoOperatingMode.SLEEP) {
+            val wakePref = pendingWakePrefix
+            pendingWakePrefix = null
+            if (!wakePref.isNullOrBlank()) {
+                viewModel.triggerWakeWordButton(wakePref)
+            } else if (pendingRequestedMode == MokoOperatingMode.SLEEP) {
                 viewModel.activateSleepMode()
             } else {
                 viewModel.activateOnlineMode()
             }
         } else {
+            pendingWakePrefix = null
             viewModel.onMicPermissionDenied()
         }
     }
 
     fun requestModeWithMicPermission(targetMode: MokoOperatingMode) {
         if (targetMode == MokoOperatingMode.OFFLINE) {
+            pendingWakePrefix = null
             viewModel.activateOfflineMode()
             return
         }
         pendingRequestedMode = targetMode
+        pendingWakePrefix = null
         if (!privacyConsentAccepted) {
             viewModel.setVoicePrivacyConsent(true)
         }
@@ -228,6 +236,30 @@ fun SuaDashboardScreen(
             micPermLauncher.launch(
                 arrayOf(Manifest.permission.RECORD_AUDIO)
             )
+        }
+    }
+
+    fun triggerWakeWithMicPermission(prefix: String) {
+        pendingWakePrefix = prefix
+        if (!privacyConsentAccepted) {
+            viewModel.setVoicePrivacyConsent(true)
+        }
+        val hasMicPerm = viewModel.controller.hasPermission(Manifest.permission.RECORD_AUDIO)
+        if (hasMicPerm) {
+            pendingWakePrefix = null
+            viewModel.triggerWakeWordButton(prefix)
+        } else {
+            micPermLauncher.launch(
+                arrayOf(Manifest.permission.RECORD_AUDIO)
+            )
+        }
+    }
+
+    // Automatically start continuous microphone listening on launch unless user explicitly selected OFFLINE
+    LaunchedEffect(Unit) {
+        val savedMode = viewModel.prefs.getSavedOperatingMode()
+        if (savedMode != MokoOperatingMode.OFFLINE && operatingMode == MokoOperatingMode.OFFLINE) {
+            requestModeWithMicPermission(savedMode)
         }
     }
 
@@ -411,13 +443,11 @@ fun SuaDashboardScreen(
                                 Text(
                                     text = when (operatingMode) {
                                         MokoOperatingMode.ONLINE ->
-                                            if (wakeRemainingSeconds > 0) "Online • Listening (${wakeRemainingSeconds}s)"
-                                            else "Online • Standby (Say 'Hi $assistantName')"
+                                            "Online • Continuous Mic Active"
                                         MokoOperatingMode.SLEEP ->
-                                            if (wakeRemainingSeconds > 0) "Sleep Mode • Listening (${wakeRemainingSeconds}s)"
-                                            else "Sleep Mode • Standby (Say 'Hi $assistantName')"
+                                            "Sleep Mode • Continuous Mic Active"
                                         MokoOperatingMode.OFFLINE ->
-                                            "Offline • Tap Online or Mic to start"
+                                            "Offline • Mic Off"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = when (operatingMode) {
@@ -630,12 +660,21 @@ fun SuaDashboardScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // 0. FULL-WIDTH 3-MODE SEGMENTED BAR (Never wraps or squishes letters)
+                    // 0. FULL-WIDTH 3-MODE SEGMENTED BAR (Online / Sleep / Offline)
                     ThreeModeSegmentedSwitch(
                         currentMode = operatingMode,
                         onSelectOnline = { requestModeWithMicPermission(MokoOperatingMode.ONLINE) },
                         onSelectSleep = { requestModeWithMicPermission(MokoOperatingMode.SLEEP) },
                         onSelectOffline = { viewModel.activateOfflineMode() }
+                    )
+
+                    // 0B. THREE DYNAMIC WAKE-WORD COMMAND BUTTONS:
+                    // [Hello <Name>] • [Ok <Name>] • [Hey <Name>]
+                    ThreeWakeWordCommandButtons(
+                        assistantName = assistantName,
+                        onWakeHello = { triggerWakeWithMicPermission("Hello") },
+                        onWakeOk = { triggerWakeWithMicPermission("Ok") },
+                        onWakeHey = { triggerWakeWithMicPermission("Hey") }
                     )
 
                     // 1. SERVICE / PRIVACY ERROR BANNER
@@ -747,6 +786,62 @@ fun SuaDashboardScreen(
                         viewModel.setVoicePrivacyConsent(false)
                     }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreeWakeWordCommandButtons(
+    assistantName: String,
+    onWakeHello: () -> Unit,
+    onWakeOk: () -> Unit,
+    onWakeHey: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 600.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val wakeItems = listOf(
+            Triple("Hello $assistantName", "wake_hello_button", onWakeHello),
+            Triple("Ok $assistantName", "wake_ok_button", onWakeOk),
+            Triple("Hey $assistantName", "wake_hey_button", onWakeHey)
+        )
+        for ((label, tag, action) in wakeItems) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SuaSurfaceElevated.copy(alpha = 0.90f))
+                    .border(1.2.dp, SuaCyan.copy(alpha = 0.70f), RoundedCornerShape(14.dp))
+                    .clickable { action() }
+                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                    .testTag(tag),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = label,
+                        tint = SuaCyan,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = SuaTextPrimary,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

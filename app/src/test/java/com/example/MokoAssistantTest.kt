@@ -60,6 +60,14 @@ class MokoAssistantTest {
             "Assistant signature phrase must be detected as self-echo",
             SuaVoiceSpeaker.isLikelySelfEcho("जी बॉस मोको ऑनलाइन हो गई हूँ")
         )
+        assertTrue(
+            "'हो गया' status speech must be blocked as self-echo",
+            SuaVoiceSpeaker.isLikelySelfEcho("हो गया")
+        )
+        assertTrue(
+            "'हो रहा है' status speech must be blocked as self-echo",
+            SuaVoiceSpeaker.isLikelySelfEcho("हो रहा है")
+        )
         assertFalse(
             "User correction must never be blocked as self-echo",
             SuaVoiceSpeaker.isLikelySelfEcho("नहीं नहीं प्राइम मिनिस्टर कौन है")
@@ -68,6 +76,22 @@ class MokoAssistantTest {
             "User barge-in phrase must be detected",
             HindiTransliterator.isUserBargeInPhrase("नहीं नहीं प्राइम मिनिस्टर कौन है", "Moko")
         )
+    }
+
+    @Test
+    fun dynamicWakeWordButtons_supportHelloOkAndHeyForCustomAssistantName() {
+        val customName = "Alexa"
+        val (hasHello, afterHello) = HindiTransliterator.checkAndStripWakeWord("Hello Alexa YouTube खोलो", customName)
+        assertTrue(hasHello)
+        assertEquals("YouTube खोलो", afterHello)
+
+        val (hasOk, afterOk) = HindiTransliterator.checkAndStripWakeWord("Ok Alexa", customName)
+        assertTrue(hasOk)
+        assertEquals("", afterOk)
+
+        val (hasHey, afterHey) = HindiTransliterator.checkAndStripWakeWord("Hey Alexa गाना बजाओ", customName)
+        assertTrue(hasHey)
+        assertEquals("गाना बजाओ", afterHey)
     }
 
     @Test

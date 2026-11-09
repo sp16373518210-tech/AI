@@ -316,18 +316,19 @@ object HindiTransliterator {
         val dynamicPatterns = buildList {
             for (n in listOf(dynamicName, dynamicRoman).distinct()) {
                 if (n.isNotEmpty()) {
+                    add("hello $n")
                     add("ok $n")
                     add("okay $n")
                     add("hey $n")
                     add("hi $n")
-                    add("hello $n")
                     add("suno $n")
                     add("oye $n")
-                    add("ओके $n")
-                    add("हाय $n")
-                    add("हे $n")
                     add("हेलो $n")
+                    add("ओके $n")
+                    add("हे $n")
+                    add("हाय $n")
                     add("सुनो $n")
+                    add("अरे $n")
                     add(n)
                 }
             }
@@ -350,6 +351,38 @@ object HindiTransliterator {
             }
         }
         return Pair(false, trimmed)
+    }
+
+    /**
+     * Detects if a recognized phrase is actually the assistant's own status/confirmation voice
+     * ("हो गया", "हो रहा है", "कर दिया गया है", "बोलिए क्या काम करना है", "जी बॉस", etc.).
+     */
+    fun isAssistantSelfStatusPhrase(rawInput: String): Boolean {
+        val trimmed = rawInput.trim().lowercase()
+        if (trimmed.isEmpty()) return false
+
+        val exactSelfStatus = setOf(
+            "हो गया", "हो गया है", "हो रहा है", "यह हो गया", "यह हो रहा है",
+            "काम हो गया", "काम हो गया है", "काम हो रहा है",
+            "कर दिया", "कर दिया है", "कर दिया गया", "कर दिया गया है",
+            "चालू कर दिया", "चालू कर दिया है", "बंद कर दिया", "बंद कर दिया है",
+            "खोल दिया", "खोल दिया है", "चला रही हूँ", "बजा रही हूँ", "सुन रही हूँ",
+            "जी बॉस", "हाँ बॉस", "ठीक है बॉस", "बिल्कुल बॉस", "ज़रूर बॉस",
+            "बोलिए क्या काम करना है", "बताइए क्या काम करना है",
+            "ho gaya", "ho gaya hai", "ho raha hai", "kar diya", "kar diya hai",
+            "kar diya gaya hai", "ji boss", "haan boss", "boliye kya kaam karna hai"
+        )
+        if (trimmed in exactSelfStatus) return true
+
+        val selfStatusSubstrings = listOf(
+            "ऑनलाइन हो गई हूँ", "स्लीप मोड में हूँ", "ऑफलाइन हो गई है",
+            "जी बॉस", "माफ़ कीजिए", "किया जा रहा है", "कर दिया गया है",
+            "चलाया जा रहा है", "लगाया जा रहा है", "खोली जा रही हैं",
+            "भेजा जा रहा है", "लगातार बात कर सकते हैं", "स्टैंडबाय में चला जाएगा",
+            "बोलिए क्या काम करना है", "यूट्यूब पर गाना चला रही हूँ",
+            "रही हूँ", "रहा हूँ", "हो गया है", "हो रहा है"
+        )
+        return selfStatusSubstrings.any { trimmed.contains(it) }
     }
 
     /**
@@ -516,11 +549,8 @@ object HindiTransliterator {
         if (trimmed.isEmpty()) return false
         val lower = trimmed.lowercase()
 
-        // Never treat Moko's own status announcements ("ऑनलाइन हो गई हूँ", "स्लीप मोड में हूँ", "जी बॉस") as user barge-in
-        val selfAnnouncements = listOf(
-            "ऑनलाइन हो गई हूँ", "स्लीप मोड में हूँ", "जी बॉस", "माफ़ कीजिए", "किया जा रहा है", "कर दिया गया है", "चलाया जा रहा है"
-        )
-        if (selfAnnouncements.any { lower.contains(it) }) {
+        // Never treat Moko's own status announcements ("हो गया", "हो रहा है", "ऑनलाइन हो गई हूँ", "जी बॉस") as user barge-in
+        if (isAssistantSelfStatusPhrase(lower)) {
             return false
         }
 
@@ -529,12 +559,16 @@ object HindiTransliterator {
         if (isCorr) return true
 
         val botLower = assistantName.trim().lowercase().ifEmpty { "moko" }
+        val botRoman = toRoman(botLower).lowercase().ifEmpty { botLower }
         val startsWithWakePrefix = Regex(
-            "^(?i)(hi\\s+$botLower|hey\\s+$botLower|ok\\s+$botLower|okay\\s+$botLower|suno\\s+$botLower|हाय\\s+मोको|हे\\s+मोको|ओके\\s+मोको|सुनो\\s+मोको|अरे\\s+मोको)"
+            "^(?i)(hello\\s+$botLower|hi\\s+$botLower|hey\\s+$botLower|ok\\s+$botLower|okay\\s+$botLower|suno\\s+$botLower|" +
+                "hello\\s+$botRoman|hi\\s+$botRoman|hey\\s+$botRoman|ok\\s+$botRoman|okay\\s+$botRoman|" +
+                "हेलो\\s+$botLower|हाय\\s+$botLower|हे\\s+$botLower|ओके\\s+$botLower|सुनो\\s+$botLower|" +
+                "हेलो\\s+मोको|हाय\\s+मोको|हे\\s+मोको|ओके\\s+मोको|सुनो\\s+मोको|अरे\\s+मोको)"
         ).containsMatchIn(lower)
         if (startsWithWakePrefix) return true
 
-        return Regex("^(?i)(नहीं|नही|अरे|सुनो|रुको|प्राइम|प्रधानमंत्री|राष्ट्रपति|साउंड|आवाज़|आवाज|म्यूजिक|गाना|कॉल|no\\b|wait\\b|hey\\b|volume\\b)").containsMatchIn(lower)
+        return Regex("^(?i)(नहीं|नही|अरे|सुनो|रुको|प्राइम|प्रधानमंत्री|राष्ट्रपति|साउंड|आवाज़|आवाज|म्यूजिक|गाना|कॉल|यूट्यूब|व्हाट्सएप|no\\b|wait\\b|hey\\b|hello\\b|ok\\b|volume\\b|open\\b|play\\b|call\\b)").containsMatchIn(lower)
     }
 
     /**

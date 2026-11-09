@@ -20,6 +20,7 @@ import com.example.data.SuaStatus
 import com.example.data.VoicePreset
 import com.example.service.SuaVoiceService
 import com.example.service.SuaVoiceSpeaker
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,7 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
     val prefs = SuaPreferences(appContext)
     val controller = SuaDeviceController(appContext)
     private val brain = SuaBrain(prefs, controller)
+    private var activeTextCommandJob: Job? = null
 
     val status: StateFlow<SuaStatus> = SuaStateRepository.status
     val operatingMode: StateFlow<MokoOperatingMode> = SuaStateRepository.operatingMode
@@ -210,6 +212,24 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun triggerWakeWordButton(prefix: String) {
+        val bot = _assistantName.value
+        val phrase = "$prefix $bot"
+        prefs.setVoicePrivacyConsentAccepted(true)
+        _privacyConsentAccepted.value = true
+        prefs.setContinuousBackgroundEnabled(true)
+        _continuousBgEnabled.value = true
+        val targetMode = if (operatingMode.value == MokoOperatingMode.SLEEP) {
+            MokoOperatingMode.SLEEP
+        } else {
+            MokoOperatingMode.ONLINE
+        }
+        SuaStateRepository.setOperatingMode(targetMode)
+        SuaStateRepository.markWakeWordDetected()
+        SuaVoiceService.startServiceInMode(appContext, targetMode)
+        SuaVoiceService.sendCommandToService(appContext, phrase)
+    }
+
     fun activateOnlineMode() {
         prefs.setVoicePrivacyConsentAccepted(true)
         _privacyConsentAccepted.value = true
@@ -229,6 +249,7 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
     fun activateOfflineMode() {
         val botName = prefs.getAssistantName()
         val uName = prefs.getUserName()
+        activeTextCommandJob?.cancel()
         prefs.setContinuousBackgroundEnabled(false)
         _continuousBgEnabled.value = false
         SuaVoiceService.stopService(appContext)
@@ -249,13 +270,17 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
         val trimmed = commandText.trim()
         if (trimmed.isEmpty()) return
 
+        // Cancel any in-flight command or speech immediately when a new command arrives
+        activeTextCommandJob?.cancel()
+        SuaVoiceSpeaker.stopSpeaking()
+
         if (isBackgroundServiceRunning.value) {
             SuaVoiceService.sendCommandToService(appContext, trimmed)
         } else {
             val hudCommand = brain.sanitizeForHud(trimmed)
             SuaStateRepository.updateLiveTranscript(hudCommand)
             SuaStateRepository.updateStatus(SuaStatus.PROCESSING)
-            viewModelScope.launch {
+            activeTextCommandJob = viewModelScope.launch {
                 val parsed = brain.interpretCommand(trimmed)
                 val result = controller.executeCommand(parsed)
                 _userName.value = prefs.getUserName()
