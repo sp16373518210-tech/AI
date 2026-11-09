@@ -31,13 +31,56 @@ object SuaStateRepository {
     private val _pendingUiNavigationAction = MutableStateFlow<String?>(null)
     val pendingUiNavigationAction: StateFlow<String?> = _pendingUiNavigationAction.asStateFlow()
 
-    private val _liveTranscript = MutableStateFlow("Say 'Hi Moko' or type a message below...")
+    private val _liveTranscript = MutableStateFlow("")
     val liveTranscript: StateFlow<String> = _liveTranscript.asStateFlow()
 
     private val _lastSuaReply = MutableStateFlow(
-        "Moko is ready. Select ONLINE for full AI & voice, SLEEP for offline hardware & calls, or OFFLINE to stop background mic."
+        "Hi! I'm Moko. Tap the mic to start talking or type a message below."
     )
     val lastSuaReply: StateFlow<String> = _lastSuaReply.asStateFlow()
+
+    fun formatCleanUserSpeech(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ""
+        if (trimmed.contains(" // ") ||
+            trimmed.startsWith("STANDBY", ignoreCase = true) ||
+            trimmed.startsWith("ONLINE MODE", ignoreCase = true) ||
+            trimmed.startsWith("SLEEP MODE", ignoreCase = true) ||
+            trimmed.startsWith("OFFLINE MODE", ignoreCase = true) ||
+            trimmed.startsWith("STOPPED", ignoreCase = true)
+        ) {
+            return ""
+        }
+        return trimmed
+    }
+
+    fun formatCleanConversationReply(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return "I'm listening. Tell me how I can help you."
+        if (trimmed.startsWith("SCREEN SHARE VISION //", ignoreCase = true)) {
+            return "Screen shared. You can ask me about anything on your screen or say 'Click [button]'."
+        }
+        val withoutPrefix = if (trimmed.contains(" // ")) {
+            val prefix = trimmed.substringBefore(" // ").uppercase()
+            val body = trimmed.substringAfter(" // ").trim()
+            when {
+                prefix.contains("ONLINE") && body.contains("Permanent Mic ON", ignoreCase = true) ->
+                    "I'm online and listening. Go ahead and speak anytime."
+                prefix.contains("SLEEP MODE") && body.contains("AI Q&A is OFF", ignoreCase = true) ->
+                    "Sleep mode is active for calls and phone controls."
+                prefix.contains("OFFLINE") && body.contains("completely stopped", ignoreCase = true) ->
+                    "Microphone is off. Tap the mic button anytime to start."
+                else -> body
+            }
+        } else {
+            trimmed
+        }
+        return withoutPrefix
+            .replace(Regex("\\s*\\(com\\.[a-zA-Z0-9_.]+\\)"), "")
+            .replace(Regex("\\s*\\(org\\.[a-zA-Z0-9_.]+\\)"), "")
+            .trim()
+            .ifEmpty { trimmed }
+    }
 
     private val _isFlashlightOn = MutableStateFlow(false)
     val isFlashlightOn: StateFlow<Boolean> = _isFlashlightOn.asStateFlow()

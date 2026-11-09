@@ -204,28 +204,23 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
             }
             MokoOperatingMode.ONLINE,
             MokoOperatingMode.SLEEP -> {
-                if (wakeSessionRemainingSeconds.value == 0) {
-                    // Wake 60s active conversation window immediately
-                    val botName = prefs.getAssistantName()
-                    val uName = prefs.getUserName()
-                    SuaStateRepository.markWakeWordDetected()
-                    SuaStateRepository.updateLiveTranscript("$botName AWAKE (60s) // Speak your command now...")
-                    SuaVoiceSpeaker.speak("हाँ मेरे प्यारे $uName, बोलिए क्या काम करना है?")
-                } else {
-                    // Reset 60s timer on tap
-                    SuaStateRepository.markWakeWordDetected()
-                }
+                SuaStateRepository.markWakeWordDetected()
+                SuaVoiceService.startServiceInMode(appContext, operatingMode.value)
             }
         }
     }
 
     fun activateOnlineMode() {
+        prefs.setVoicePrivacyConsentAccepted(true)
+        _privacyConsentAccepted.value = true
         prefs.setContinuousBackgroundEnabled(true)
         _continuousBgEnabled.value = true
         SuaVoiceService.startServiceInMode(appContext, MokoOperatingMode.ONLINE)
     }
 
     fun activateSleepMode() {
+        prefs.setVoicePrivacyConsentAccepted(true)
+        _privacyConsentAccepted.value = true
         prefs.setContinuousBackgroundEnabled(true)
         _continuousBgEnabled.value = true
         SuaVoiceService.startServiceInMode(appContext, MokoOperatingMode.SLEEP)
@@ -238,19 +233,16 @@ class SuaViewModel(application: Application) : AndroidViewModel(application) {
         _continuousBgEnabled.value = false
         SuaVoiceService.stopService(appContext)
         SuaStateRepository.setOperatingMode(MokoOperatingMode.OFFLINE)
-        SuaStateRepository.updateLiveTranscript("OFFLINE MODE // Background listening & microphone are completely OFF.")
-        SuaStateRepository.updateLastReply("$botName OFFLINE // Background service and microphone are completely stopped. Tap ONLINE or SLEEP to restart.")
-        SuaVoiceSpeaker.speak("जी $uName, $botName अब पूरी तरह ऑफलाइन हो गई है। बैकग्राउंड में ऐप और माइक दोनों बंद हो गए हैं।")
+        SuaStateRepository.updateLastReply("$botName is offline. Tap the mic anytime to start listening.")
+        SuaVoiceSpeaker.speak("जी $uName, $botName अब ऑफलाइन हो गई है।")
     }
 
     fun onMicPermissionDenied() {
-        val botName = prefs.getAssistantName()
         val uName = prefs.getUserName()
         SuaStateRepository.setOperatingMode(MokoOperatingMode.OFFLINE)
         SuaStateRepository.updateStatus(SuaStatus.ERROR)
-        SuaStateRepository.updateLiveTranscript("MIC PERMISSION DENIED // Cannot start Voice Mode")
-        SuaStateRepository.updateLastReply("PERMISSION DENIED // Microphone access was denied. Open Settings -> GRANT ALL SYSTEM PERMISSIONS to enable $botName voice.")
-        SuaVoiceSpeaker.speak("माफ़ कीजिए $uName, आपने माइक परमिशन मना कर दी है। इसके बिना मैं आपकी आवाज़ नहीं सुन सकती।")
+        SuaStateRepository.updateLastReply("Microphone permission is required. Please allow microphone access to talk.")
+        SuaVoiceSpeaker.speak("माफ़ कीजिए $uName, माइक परमिशन के बिना मैं आपकी आवाज़ नहीं सुन सकती।")
     }
 
     fun executeCommandText(commandText: String) {

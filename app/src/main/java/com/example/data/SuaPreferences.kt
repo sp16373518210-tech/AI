@@ -138,7 +138,7 @@ class SuaPreferences(context: Context) {
     }
 
     fun hasAcceptedVoicePrivacyConsent(): Boolean {
-        return prefs.getBoolean(KEY_VOICE_PRIVACY_CONSENT, false)
+        return prefs.getBoolean(KEY_VOICE_PRIVACY_CONSENT, true)
     }
 
     fun setVoicePrivacyConsentAccepted(accepted: Boolean) {

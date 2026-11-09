@@ -119,6 +119,7 @@ import com.example.data.DeviceActionType
 import com.example.data.MokoOperatingMode
 import com.example.data.PendingCommsConfirmation
 import com.example.data.SuaPreferences
+import com.example.data.SuaStateRepository
 import com.example.data.SuaStatus
 import com.example.service.ScreenCaptureManager
 import com.example.ui.theme.SuaAmber
@@ -194,6 +195,9 @@ fun SuaDashboardScreen(
         val micGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
             viewModel.controller.hasPermission(Manifest.permission.RECORD_AUDIO)
         if (micGranted) {
+            if (!privacyConsentAccepted) {
+                viewModel.setVoicePrivacyConsent(true)
+            }
             if (pendingRequestedMode == MokoOperatingMode.SLEEP) {
                 viewModel.activateSleepMode()
             } else {
@@ -211,13 +215,10 @@ fun SuaDashboardScreen(
         }
         pendingRequestedMode = targetMode
         if (!privacyConsentAccepted) {
-            showPrivacyConsentDialog = true
-            return
+            viewModel.setVoicePrivacyConsent(true)
         }
-        val hasCorePerms = viewModel.controller.hasPermission(Manifest.permission.RECORD_AUDIO) &&
-            viewModel.controller.hasPermission(Manifest.permission.READ_CONTACTS) &&
-            viewModel.controller.hasPermission(Manifest.permission.CALL_PHONE)
-        if (hasCorePerms) {
+        val hasMicPerm = viewModel.controller.hasPermission(Manifest.permission.RECORD_AUDIO)
+        if (hasMicPerm) {
             if (targetMode == MokoOperatingMode.SLEEP) {
                 viewModel.activateSleepMode()
             } else {
@@ -225,7 +226,7 @@ fun SuaDashboardScreen(
             }
         } else {
             micPermLauncher.launch(
-                viewModel.controller.getRequiredRuntimePermissions().toTypedArray()
+                arrayOf(Manifest.permission.RECORD_AUDIO)
             )
         }
     }
@@ -381,40 +382,42 @@ fun SuaDashboardScreen(
                             }
                         },
                         title = {
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Text(
-                                        text = assistantName.uppercase(),
-                                        style = MaterialTheme.typography.titleMedium,
+                                        text = assistantName,
+                                        style = MaterialTheme.typography.titleLarge,
                                         color = SuaTextPrimary,
-                                        fontWeight = FontWeight.ExtraBold
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(SuaCyan.copy(alpha = 0.16f))
-                                            .border(1.dp, SuaCyan.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "BY ${SuaPreferences.DEVELOPER_NAME}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = SuaCyan,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                when (operatingMode) {
+                                                    MokoOperatingMode.ONLINE -> SuaEmerald
+                                                    MokoOperatingMode.SLEEP -> SuaAmber
+                                                    MokoOperatingMode.OFFLINE -> SuaCrimson
+                                                }
+                                            )
+                                    )
                                 }
                                 Text(
                                     text = when (operatingMode) {
                                         MokoOperatingMode.ONLINE ->
-                                            if (wakeRemainingSeconds > 0) "ONLINE • Active ${wakeRemainingSeconds}s"
-                                            else "ONLINE • Standby ('Hi $assistantName')"
+                                            if (wakeRemainingSeconds > 0) "Online • Listening (${wakeRemainingSeconds}s)"
+                                            else "Online • Standby (Say 'Hi $assistantName')"
                                         MokoOperatingMode.SLEEP ->
-                                            if (wakeRemainingSeconds > 0) "SLEEP • Offline ${wakeRemainingSeconds}s"
-                                            else "SLEEP • Offline Mode ('Hi $assistantName')"
+                                            if (wakeRemainingSeconds > 0) "Sleep Mode • Listening (${wakeRemainingSeconds}s)"
+                                            else "Sleep Mode • Standby (Say 'Hi $assistantName')"
                                         MokoOperatingMode.OFFLINE ->
-                                            "OFFLINE • Background Mic Off"
+                                            "Offline • Tap Online or Mic to start"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = when (operatingMode) {
@@ -428,21 +431,26 @@ fun SuaDashboardScreen(
                             }
                         },
                         actions = {
-                            ThreeModeSegmentedSwitch(
-                                currentMode = operatingMode,
-                                onSelectOnline = { requestModeWithMicPermission(MokoOperatingMode.ONLINE) },
-                                onSelectSleep = { requestModeWithMicPermission(MokoOperatingMode.SLEEP) },
-                                onSelectOffline = { viewModel.activateOfflineMode() }
-                            )
                             IconButton(
                                 onClick = onOpenSettings,
-                                modifier = Modifier.testTag("top_settings_button")
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .testTag("top_settings_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Open Settings & History",
-                                    tint = SuaCyan
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(SuaSurfaceElevated.copy(alpha = 0.85f))
+                                        .border(1.2.dp, SuaCyan.copy(alpha = 0.7f), RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Open Settings & History",
+                                        tint = SuaCyan
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -451,8 +459,6 @@ fun SuaDashboardScreen(
                     )
                 },
                 bottomBar = {
-                    // Deep Purple & Neon Violet Glass Bottom Bar:
-                    // [VOICE] + [SCREEN SHARE] + [Message Input] + [SEND]
                     Surface(
                         color = Color.Transparent,
                         modifier = Modifier.fillMaxWidth()
@@ -474,25 +480,33 @@ fun SuaDashboardScreen(
                                     violetGlassBrush,
                                     RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
                                 )
-                                .padding(horizontal = 12.dp, vertical = 12.dp)
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // 1. VOICE BUTTON (Wakes 60s window or starts Online Mode)
+                                // 1. COMPACT MIC BUTTON (Wakes 60s window or starts Online Mode)
                                 val isVoiceActive = isBgRunning && wakeRemainingSeconds > 0
-                                Button(
+                                IconButton(
                                     onClick = {
-                                        if (operatingMode == MokoOperatingMode.OFFLINE) {
+                                        if (operatingMode == MokoOperatingMode.OFFLINE || !viewModel.controller.hasPermission(Manifest.permission.RECORD_AUDIO)) {
                                             requestModeWithMicPermission(MokoOperatingMode.ONLINE)
                                         } else {
                                             viewModel.wakeOrToggleFromOrb()
                                         }
                                     },
                                     modifier = Modifier
-                                        .height(50.dp)
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(
+                                            when {
+                                                isVoiceActive -> SuaEmerald.copy(alpha = 0.22f)
+                                                operatingMode == MokoOperatingMode.SLEEP -> SuaAmber.copy(alpha = 0.22f)
+                                                else -> SuaSurfaceElevated
+                                            }
+                                        )
                                         .border(
                                             1.2.dp,
                                             when {
@@ -502,73 +516,47 @@ fun SuaDashboardScreen(
                                             },
                                             RoundedCornerShape(14.dp)
                                         )
-                                        .testTag("bottom_voice_toggle_button"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = when {
-                                            isVoiceActive -> SuaEmerald.copy(alpha = 0.22f)
-                                            operatingMode == MokoOperatingMode.SLEEP -> SuaAmber.copy(alpha = 0.22f)
-                                            else -> SuaSurfaceElevated
-                                        },
-                                        contentColor = when {
-                                            isVoiceActive -> SuaEmerald
-                                            operatingMode == MokoOperatingMode.SLEEP -> SuaAmber
-                                            else -> SuaCyan
-                                        }
-                                    )
+                                        .testTag("bottom_voice_toggle_button")
                                 ) {
                                     Icon(
                                         imageVector = if (isBgRunning) Icons.Default.Mic else Icons.Default.MicOff,
                                         contentDescription = "Toggle Voice Mode",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = when {
-                                            isVoiceActive -> "${wakeRemainingSeconds}s"
-                                            isBgRunning -> "WAKE"
-                                            else -> "VOICE"
+                                        tint = when {
+                                            isVoiceActive -> SuaEmerald
+                                            operatingMode == MokoOperatingMode.SLEEP -> SuaAmber
+                                            else -> SuaCyan
                                         },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.ExtraBold
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
 
-                                // 2. SCREEN SHARE BUTTON (Right next to Message bar: AI Screen Analysis + Voice Click & Unlock)
-                                Button(
+                                // 2. COMPACT SCREEN SHARE BUTTON
+                                IconButton(
                                     onClick = {
                                         viewModel.toggleScreenShareAndAnalyze()
                                     },
                                     modifier = Modifier
-                                        .height(50.dp)
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(
+                                            if (isScreenShareActive) SuaEmerald.copy(alpha = 0.24f) else SuaSurfaceElevated
+                                        )
                                         .border(
                                             1.2.dp,
                                             if (isScreenShareActive) SuaEmerald else SuaCyan,
                                             RoundedCornerShape(14.dp)
                                         )
-                                        .testTag("bottom_screen_share_button"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isScreenShareActive) SuaEmerald.copy(alpha = 0.24f) else SuaSurfaceElevated,
-                                        contentColor = if (isScreenShareActive) SuaEmerald else SuaCyan
-                                    )
+                                        .testTag("bottom_screen_share_button")
                                 ) {
                                     Icon(
                                         imageVector = if (isScreenShareActive) Icons.AutoMirrored.Filled.StopScreenShare else Icons.AutoMirrored.Filled.ScreenShare,
                                         contentDescription = "Screen Share & Analyze",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isScreenShareActive) "SHARED" else "SHARE",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.ExtraBold
+                                        tint = if (isScreenShareActive) SuaEmerald else SuaCyan,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
 
-                                // 3. MESSAGE INPUT FIELD (100% English placeholder)
+                                // 3. MESSAGE INPUT FIELD
                                 OutlinedTextField(
                                     value = commandInput,
                                     onValueChange = { commandInput = it },
@@ -614,7 +602,7 @@ fun SuaDashboardScreen(
                                         }
                                     },
                                     modifier = Modifier
-                                        .size(50.dp)
+                                        .size(48.dp)
                                         .testTag("send_command_button"),
                                     shape = RoundedCornerShape(14.dp),
                                     contentPadding = PaddingValues(0.dp),
@@ -633,8 +621,6 @@ fun SuaDashboardScreen(
                     }
                 }
             ) { innerPadding ->
-                // CLEAN MINIMAL MAIN SCREEN:
-                // Only Center Orb (with Moko's Reply in the center) + User Spoken Text at the bottom
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -642,15 +628,22 @@ fun SuaDashboardScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // 0. SERVICE / PRIVACY ERROR BANNER (Never fail silently)
+                    // 0. FULL-WIDTH 3-MODE SEGMENTED BAR (Never wraps or squishes letters)
+                    ThreeModeSegmentedSwitch(
+                        currentMode = operatingMode,
+                        onSelectOnline = { requestModeWithMicPermission(MokoOperatingMode.ONLINE) },
+                        onSelectSleep = { requestModeWithMicPermission(MokoOperatingMode.SLEEP) },
+                        onSelectOffline = { viewModel.activateOfflineMode() }
+                    )
+
+                    // 1. SERVICE / PRIVACY ERROR BANNER
                     AnimatedVisibility(visible = !serviceErrorMessage.isNullOrBlank()) {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .widthIn(max = 600.dp)
-                                .padding(bottom = 8.dp)
                                 .testTag("service_error_banner"),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = SuaSurfaceElevated)
@@ -685,7 +678,7 @@ fun SuaDashboardScreen(
                         }
                     }
 
-                    // Active Call / SMS / WhatsApp Multi-Number & Hindi/English Confirmation Card (only shown when confirming a Call/SMS)
+                    // Active Call / SMS / WhatsApp Multi-Number & Hindi/English Confirmation Card
                     AnimatedVisibility(visible = pendingComms != null) {
                         pendingComms?.let { activePending ->
                             PendingCommsConfirmationCard(
@@ -695,7 +688,7 @@ fun SuaDashboardScreen(
                         }
                     }
 
-                    // 1. CENTER AREA: NEON VIOLET GLASS ORB + MOKO RESPONSE IN CENTER
+                    // 2. CENTER AREA: VOICE ORB + CLEAN CONVERSATIONAL REPLY
                     NeonVioletGlassOrbCard(
                         assistantName = assistantName,
                         userName = userName,
@@ -704,9 +697,9 @@ fun SuaDashboardScreen(
                         wakeRemainingSeconds = wakeRemainingSeconds,
                         isScreenShareActive = isScreenShareActive,
                         audioRms = audioRms,
-                        centerMokoReply = lastSuaReply,
+                        centerMokoReply = SuaStateRepository.formatCleanConversationReply(lastSuaReply),
                         onTapOrb = {
-                            if (operatingMode == MokoOperatingMode.OFFLINE) {
+                            if (operatingMode == MokoOperatingMode.OFFLINE || !viewModel.controller.hasPermission(Manifest.permission.RECORD_AUDIO)) {
                                 requestModeWithMicPermission(MokoOperatingMode.ONLINE)
                             } else {
                                 viewModel.wakeOrToggleFromOrb()
@@ -716,11 +709,9 @@ fun SuaDashboardScreen(
                         onTestVoice = { viewModel.testVoiceGreeting() }
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // 2. BOTTOM SPOKEN DISPLAY: ONLY WHAT THE USER SPOKE
+                    // 3. USER CONVERSATION BUBBLE: ONLY WHAT THE USER SPOKE OR TYPED
                     UserSpokenBottomCard(
-                        userSpokenText = liveTranscript,
+                        userSpokenText = SuaStateRepository.formatCleanUserSpeech(liveTranscript),
                         operatingMode = operatingMode,
                         isScreenShareActive = isScreenShareActive
                     )
@@ -767,6 +758,7 @@ private fun UserSpokenBottomCard(
     operatingMode: MokoOperatingMode,
     isScreenShareActive: Boolean
 ) {
+    val hasSpokenText = userSpokenText.isNotBlank()
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -780,11 +772,11 @@ private fun UserSpokenBottomCard(
                 .fillMaxWidth()
                 .border(
                     width = 1.2.dp,
-                    color = if (isScreenShareActive) SuaEmerald.copy(alpha = 0.75f) else SuaCyan.copy(alpha = 0.65f),
+                    color = if (isScreenShareActive) SuaEmerald.copy(alpha = 0.75f) else SuaCyan.copy(alpha = 0.55f),
                     shape = RoundedCornerShape(18.dp)
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -792,27 +784,33 @@ private fun UserSpokenBottomCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "YOU SPOKE:",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "You",
+                    style = MaterialTheme.typography.labelMedium,
                     color = SuaCyan,
                     fontWeight = FontWeight.ExtraBold
                 )
-                Text(
-                    text = if (isScreenShareActive) {
-                        "SCREEN SHARE ON • VOICE CLICK READY"
-                    } else {
-                        "${operatingMode.label} MODE"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isScreenShareActive) SuaEmerald else SuaTextSecondary,
-                    fontWeight = FontWeight.Bold
-                )
+                if (isScreenShareActive) {
+                    Text(
+                        text = "Screen Share Active",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SuaEmerald,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             Text(
-                text = userSpokenText,
+                text = if (hasSpokenText) {
+                    userSpokenText
+                } else {
+                    when (operatingMode) {
+                        MokoOperatingMode.ONLINE -> "Listening... Speak anytime or type below"
+                        MokoOperatingMode.SLEEP -> "Sleep Mode... Say 'Hi Moko' or tap the orb"
+                        MokoOperatingMode.OFFLINE -> "Tap Online or the microphone orb to speak"
+                    }
+                },
                 style = MaterialTheme.typography.bodyLarge,
-                color = SuaTextPrimary,
-                fontWeight = FontWeight.Bold
+                color = if (hasSpokenText) SuaTextPrimary else SuaTextSecondary,
+                fontWeight = if (hasSpokenText) FontWeight.SemiBold else FontWeight.Normal
             )
         }
     }
@@ -954,74 +952,83 @@ private fun ThreeModeSegmentedSwitch(
     val borderCol = when (currentMode) {
         MokoOperatingMode.ONLINE -> SuaEmerald.copy(alpha = 0.85f)
         MokoOperatingMode.SLEEP -> SuaAmber.copy(alpha = 0.85f)
-        MokoOperatingMode.OFFLINE -> SuaCrimson.copy(alpha = 0.7f)
+        MokoOperatingMode.OFFLINE -> SuaBorder.copy(alpha = 0.85f)
     }
 
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .fillMaxWidth()
+            .widthIn(max = 600.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(SuaSurfaceElevated.copy(alpha = 0.92f))
             .border(
                 width = 1.2.dp,
                 color = borderCol,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(16.dp)
             )
-            .padding(2.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // 1. ONLINE PILL BUTTON (Full AI + Hardware + 60s Window)
+        // 1. ONLINE PILL BUTTON
         val isOnline = currentMode == MokoOperatingMode.ONLINE
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
                 .background(if (isOnline) SuaEmerald else Color.Transparent)
                 .clickable { onSelectOnline() }
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .padding(vertical = 10.dp)
                 .testTag("online_mode_button"),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "ONLINE",
-                style = MaterialTheme.typography.labelSmall,
+                text = "Online",
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
                 color = if (isOnline) SuaObsidian else SuaTextSecondary
             )
         }
 
-        // 2. SLEEP PILL BUTTON (Offline Hardware, Call, Bluetooth & Internet Mode)
+        // 2. SLEEP PILL BUTTON
         val isSleep = currentMode == MokoOperatingMode.SLEEP
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
                 .background(if (isSleep) SuaAmber else Color.Transparent)
                 .clickable { onSelectSleep() }
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .padding(vertical = 10.dp)
                 .testTag("sleep_mode_button"),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "SLEEP",
-                style = MaterialTheme.typography.labelSmall,
+                text = "Sleep",
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
                 color = if (isSleep) SuaObsidian else SuaTextSecondary
             )
         }
 
-        // 3. OFFLINE PILL BUTTON (Complete Background Service & Mic Shutdown)
+        // 3. OFFLINE PILL BUTTON
         val isOffline = currentMode == MokoOperatingMode.OFFLINE
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
                 .background(if (isOffline) SuaCrimson else Color.Transparent)
                 .clickable { onSelectOffline() }
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .padding(vertical = 10.dp)
                 .testTag("offline_mode_button"),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "OFFLINE",
-                style = MaterialTheme.typography.labelSmall,
+                text = "Offline",
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
                 color = if (isOffline) SuaTextPrimary else SuaTextSecondary
             )
         }
@@ -1111,13 +1118,12 @@ private fun NeonVioletGlassOrbCard(
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Status & 60s Countdown Timer Row inside Violet Glass Card
+            // Top Status Row inside Orb Card
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 60-Second Countdown Timer / Standby Badge
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
@@ -1133,27 +1139,27 @@ private fun NeonVioletGlassOrbCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Timer,
-                            contentDescription = "60s Conversation Timer",
+                            contentDescription = "Session Status",
                             tint = activeAccentColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = when {
-                                status == SuaStatus.SPEAKING -> "${assistantName.uppercase()} SPEAKING • 60s"
-                                status == SuaStatus.PROCESSING -> "${assistantName.uppercase()} THINKING..."
-                                operatingMode == MokoOperatingMode.OFFLINE -> "OFFLINE • MIC STOPPED"
-                                isInActive60sSession -> "ACTIVE • ${wakeRemainingSeconds}s (${operatingMode.label})"
-                                else -> "STANDBY • SAY 'HI ${assistantName.uppercase()}'"
+                                status == SuaStatus.SPEAKING -> "$assistantName Speaking"
+                                status == SuaStatus.PROCESSING -> "Thinking..."
+                                operatingMode == MokoOperatingMode.OFFLINE -> "Mic Off"
+                                isInActive60sSession -> "Listening • ${wakeRemainingSeconds}s"
+                                else -> "Standby • 'Hi $assistantName'"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = activeAccentColor,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
                         )
                     }
                 }
 
-                // Screen Share Status / Voice Test Badge
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
@@ -1181,23 +1187,24 @@ private fun NeonVioletGlassOrbCard(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = if (isScreenShareActive) "SCREEN SHARE ON" else "KALPA VOICE",
+                            text = if (isScreenShareActive) "Screen Share" else "Test Voice",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (isScreenShareActive) SuaEmerald else SuaTextPrimary,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // DEEP PURPLE & NEON VIOLET GLASS VOICE ORB
             val normalizedRms = ((audioRms + 2f) / 12f).coerceIn(0f, 1f)
 
             Box(
                 modifier = Modifier
-                    .size(210.dp)
+                    .size(196.dp)
                     .clip(CircleShape)
                     .clickable { onTapOrb() }
                     .testTag("central_mic_orb"),
@@ -1296,14 +1303,14 @@ private fun NeonVioletGlassOrbCard(
                         imageVector = if (isServiceActive) Icons.Default.Mic else Icons.Default.MicOff,
                         contentDescription = operatingMode.label,
                         tint = activeAccentColor,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = when {
-                            operatingMode == MokoOperatingMode.OFFLINE -> "OFFLINE"
+                            operatingMode == MokoOperatingMode.OFFLINE -> "Tap Mic"
                             isInActive60sSession -> "${wakeRemainingSeconds}s"
-                            else -> "STANDBY"
+                            else -> "Standby"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = SuaTextPrimary,
@@ -1311,8 +1318,8 @@ private fun NeonVioletGlassOrbCard(
                     )
                     Text(
                         text = when {
-                            operatingMode == MokoOperatingMode.OFFLINE -> "Tap to Start"
-                            isInActive60sSession -> "${operatingMode.label} • Speak Now"
+                            operatingMode == MokoOperatingMode.OFFLINE -> "Start Listening"
+                            isInActive60sSession -> "Speak Now"
                             else -> "Say 'Hi $assistantName'"
                         },
                         style = MaterialTheme.typography.labelSmall,
@@ -1322,22 +1329,22 @@ private fun NeonVioletGlassOrbCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // CENTER DISPLAY: MOKO'S REPLY & SCREEN SHARE ANALYSIS
+            // CLEAN CONVERSATIONAL REPLY FROM MOKO (No technical code/status headers)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
-                    .background(SuaObsidian.copy(alpha = 0.76f))
-                    .border(1.2.dp, SuaBorder, RoundedCornerShape(18.dp))
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .background(SuaObsidian.copy(alpha = 0.78f))
+                    .border(1.2.dp, SuaBorder.copy(alpha = 0.85f), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "${assistantName.uppercase()} CENTER RESPONSE",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = assistantName,
+                    style = MaterialTheme.typography.labelMedium,
                     color = SuaEmerald,
                     fontWeight = FontWeight.ExtraBold
                 )
@@ -1346,8 +1353,7 @@ private fun NeonVioletGlassOrbCard(
                     text = centerMokoReply,
                     style = MaterialTheme.typography.bodyLarge,
                     color = SuaTextPrimary,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center
+                    fontWeight = FontWeight.Medium
                 )
             }
         }

@@ -36,7 +36,7 @@ object SuaVoiceSpeaker : TextToSpeech.OnInitListener {
     private var mediaPlayer: MediaPlayer? = null
     private var isInitialized = false
     private var appContext: Context? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val speakerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var activeSpeechJob: Job? = null
 
